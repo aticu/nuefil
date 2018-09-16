@@ -4,11 +4,11 @@
 //! as defined in Section 7. The function pointers in this table are not valid after the operating system
 //! has taken control of the platform with a call to EFI_BOOT_SERVICES.ExitBootServices().
 
-use core::{mem::size_of, ptr};
+use core::mem::size_of;
 
 use crate::{
     guid::Guid,
-    memory::{MemoryDescriptor, MemoryMap, MemoryType},
+    memory::{MemoryDescriptor, MemoryMap, MemoryType, PAGE_SIZE, PhysicalAddress},
     status::{Error, Status, SUCCESS},
     Event, Handle, TableHeader,
 };
@@ -55,10 +55,10 @@ pub struct BootServices {
         AllocType: usize,
         MemoryType: MemoryType,
         Pages: usize,
-        Memory: &mut usize,
+        Memory: &mut PhysicalAddress,
     ) -> Status,
     /// Frees allocated pages.
-    FreePages: extern "win64" fn(Memory: usize, Pages: usize) -> Status,
+    FreePages: extern "win64" fn(Memory: PhysicalAddress, Pages: usize) -> Status,
     /// Returns the current boot services memory map and memory map key.
     GetMemoryMap: extern "win64" fn(
         MemoryMapSize: &mut usize,
@@ -220,29 +220,36 @@ impl BootServices {
         Ok(())
     }
 
+    /// Allocates pages of a particular type.
+    pub fn allocate_pages(&self, memory_type: MemoryType, pages: usize) -> Result<*const u8, Error> {
+        let mut address = PhysicalAddress::default();
+
+        (self.AllocatePages)(0, memory_type, pages, &mut address)?;
+
+        Ok(address.0 as *const u8)
+    }
+
+    /// Frees allocated pages.
+    pub fn free_pages(&self, memory: *const u8, pages: usize) -> Result<(), Error> {
+        (self.FreePages)(PhysicalAddress(memory as u64), pages)?;
+
+        Ok(())
+    }
+
     /// Returns the current boot services memory map and memory map key.
     pub fn get_memory_map(&self, memory_type: MemoryType) -> Result<MemoryMap, Error> {
+        // The buffer will be allocated on whole pages, that makes it easier to reuse the memory later on.
+        // Try one page as a buffer size first.
         let mut memory_map = MemoryMap {
-            buffer: ptr::null(),
-            size: 0,
+            buffer: self.allocate_pages(memory_type, 1)? as *const MemoryDescriptor,
+            alloc_size: 1,
+            size: PAGE_SIZE,
             key: 0,
             descriptor_size: 0,
             version: 0,
         };
 
-        // Call GetMemoryMap once to know how large of a buffer we need. Ignore the result.
-        let _ = (self.GetMemoryMap)(
-            &mut memory_map.size,
-            memory_map.buffer as *mut MemoryDescriptor,
-            &mut memory_map.key,
-            &mut memory_map.descriptor_size,
-            &mut memory_map.version,
-        );
-
         loop {
-            memory_map.buffer =
-                self.allocate_pool(memory_type, memory_map.size)? as *const MemoryDescriptor;
-
             if (self.GetMemoryMap)(
                 &mut memory_map.size,
                 memory_map.buffer as *mut MemoryDescriptor,
@@ -254,7 +261,12 @@ impl BootServices {
                 break;
             }
 
-            self.free_pool(memory_map.buffer as *const u8)?;
+            memory_map.alloc_size = (memory_map.size / PAGE_SIZE) + 1;
+
+            self.free_pages(memory_map.buffer as *const u8, memory_map.alloc_size)?;
+            memory_map.buffer =
+                self.allocate_pages(memory_type, memory_map.alloc_size)? as *const MemoryDescriptor;
+
         }
 
         assert!(

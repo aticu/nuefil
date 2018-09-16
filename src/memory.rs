@@ -16,6 +16,9 @@ pub struct PhysicalAddress(pub u64);
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct VirtualAddress(pub u64);
 
+/// The page size according to the UEFI specification is 4KiB.
+pub const PAGE_SIZE: usize = 0x1000;
+
 /// Describes the different areas of memory in the memory map.
 #[derive(Clone, Debug)]
 #[repr(C)]
@@ -141,6 +144,8 @@ bitflags! {
 pub struct MemoryMap {
     /// The buffer where the contents of the memory map are located.
     pub(crate) buffer: *const MemoryDescriptor,
+    /// The amount of pages that are allocated for the memory map.
+    pub(crate) alloc_size: usize,
     /// The size, in bytes, of the memory map.
     pub(crate) size: usize,
     /// The key of the memory map.
@@ -162,6 +167,17 @@ impl MemoryMap {
     /// Returns true if the memory map does not have eny entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Returns a slice to the underlying buffer.
+    /// 
+    /// This is mainly useful to get the address and size of the buffer
+    /// for freeing the memory after calling `ExitBootServices`.
+    pub fn buffer(&self) -> &[u8] {
+        // This is safe under the assumption that the buffer has the specified size and is valid.
+        unsafe {
+            slice::from_raw_parts(self.buffer as *const u8, self.alloc_size * PAGE_SIZE)
+        }
     }
 
     /// Returns an iterator over the `MemoryDescriptor`s in the `MemoryMap`.
@@ -194,7 +210,7 @@ impl MemoryMap {
     /// This function assumes that the boot services are still active:
     /// Make sure not to call it after calling `ExitBootServices`.
     pub unsafe fn drop(self, boot_services: &'static BootServices) -> Result<(), Error> {
-        boot_services.free_pool(self.buffer as *const u8)?;
+        boot_services.free_pages(self.buffer as *const u8, self.alloc_size)?;
 
         Ok(())
     }
