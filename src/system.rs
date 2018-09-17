@@ -70,3 +70,10 @@ impl SystemTable {
         unsafe { slice::from_raw_parts(self.ConfigurationTables, self.Entries) }
     }
 }
+
+// This is safe, since all the data in the system table is owned by the firmware.
+// All the Rust code should ever get is an immutable reference and therefore
+// access to the data is safe from many threads, assuming correct implementation
+// by the firmware.
+unsafe impl Send for SystemTable {}
+unsafe impl Sync for SystemTable {}
