@@ -46,8 +46,40 @@ pub struct MemoryDescriptor {
 
 /// Represents the different types memory can have.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(transparent)]
+pub struct MemoryType(u32);
+
+impl From<NamedMemoryType> for MemoryType {
+    fn from(named_memory_type: NamedMemoryType) -> MemoryType {
+        let inner_num = match named_memory_type {
+            NamedMemoryType::ReservedMemoryType => 0,
+            NamedMemoryType::LoaderCode => 1,
+            NamedMemoryType::LoaderData => 2,
+            NamedMemoryType::BootServicesCode => 3,
+            NamedMemoryType::BootServicesData => 4,
+            NamedMemoryType::RuntimeServicesCode => 5,
+            NamedMemoryType::RuntimeServicesData => 6,
+            NamedMemoryType::ConventionalMemory => 7,
+            NamedMemoryType::UnusableMemory => 8,
+            NamedMemoryType::ACPIReclaimMemory => 9,
+            NamedMemoryType::ACPIMemoryNVS => 10,
+            NamedMemoryType::MemoryMappedIO => 11,
+            NamedMemoryType::MemoryMappedIOPortSpace => 12,
+            NamedMemoryType::PalCode => 13,
+            NamedMemoryType::PersistentMemory => 14,
+            NamedMemoryType::UnknownMemoryType(num) => num,
+            NamedMemoryType::OEMSpecific(num) => num + 0x70000000,
+            NamedMemoryType::OSLoaderSpecific(num) => num + 0x80000000,
+        };
+
+        MemoryType(inner_num)
+    }
+}
+
+/// Represents the different types memory can have.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
-pub enum MemoryType {
+pub enum NamedMemoryType {
     /// Not usable.
     ReservedMemoryType,
     /// The code portions of a loaded application.
@@ -84,7 +116,39 @@ pub enum MemoryType {
     /// A memory region that operates as EfiConventionalMemory,
     /// however it happens to also support byte-addressable non-volatility.
     PersistentMemory,
-    MaxMemoryType,
+    /// The memory type is not known.
+    UnknownMemoryType(u32),
+    /// The memory type is OEM specific.
+    OEMSpecific(u32),
+    /// The memory type is OS Loader specific.
+    OSLoaderSpecific(u32),
+}
+
+impl From<MemoryType> for NamedMemoryType {
+    fn from(memory_type: MemoryType) -> NamedMemoryType {
+        match memory_type.0 {
+            0 => NamedMemoryType::ReservedMemoryType,
+            1 => NamedMemoryType::LoaderCode,
+            2 => NamedMemoryType::LoaderData,
+            3 => NamedMemoryType::BootServicesCode,
+            4 => NamedMemoryType::BootServicesData,
+            5 => NamedMemoryType::RuntimeServicesCode,
+            6 => NamedMemoryType::RuntimeServicesData,
+            7 => NamedMemoryType::ConventionalMemory,
+            8 => NamedMemoryType::UnusableMemory,
+            9 => NamedMemoryType::ACPIReclaimMemory,
+            10 => NamedMemoryType::ACPIMemoryNVS,
+            11 => NamedMemoryType::MemoryMappedIO,
+            12 => NamedMemoryType::MemoryMappedIOPortSpace,
+            13 => NamedMemoryType::PalCode,
+            14 => NamedMemoryType::PersistentMemory,
+            num @ 15...0x6fffffff => NamedMemoryType::UnknownMemoryType(num),
+            num @ 0x70000000...0x7fffffff => NamedMemoryType::OEMSpecific(num - 0x70000000),
+            num @ 0x80000000...0xffffffff => NamedMemoryType::OSLoaderSpecific(num - 0x80000000),
+            // Should be unreachable, but this is better than a panic in case it is reachable
+            num => NamedMemoryType::UnknownMemoryType(num),
+        }
+    }
 }
 
 bitflags! {
@@ -170,14 +234,12 @@ impl MemoryMap {
     }
 
     /// Returns a slice to the underlying buffer.
-    /// 
+    ///
     /// This is mainly useful to get the address and size of the buffer
     /// for freeing the memory after calling `ExitBootServices`.
     pub fn buffer(&self) -> &[u8] {
         // This is safe under the assumption that the buffer has the specified size and is valid.
-        unsafe {
-            slice::from_raw_parts(self.buffer as *const u8, self.alloc_size * PAGE_SIZE)
-        }
+        unsafe { slice::from_raw_parts(self.buffer as *const u8, self.alloc_size * PAGE_SIZE) }
     }
 
     /// Returns an iterator over the `MemoryDescriptor`s in the `MemoryMap`.
@@ -246,6 +308,14 @@ impl<'a> Iterator for MemoryMapIterator<'a> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (min, max) = self.iter.size_hint();
+
+        let min = if min == 0 { 0 } else { min - 1 };
+
+        (min, max)
+    }
 }
 
 /// An iterator over the memory map entries.
@@ -277,5 +347,13 @@ impl<'a> Iterator for MemoryMapIteratorMut<'a> {
         } else {
             None
         }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (min, max) = self.iter.size_hint();
+
+        let min = if min == 0 { 0 } else { min - 1 };
+
+        (min, max)
     }
 }

@@ -8,7 +8,9 @@ use core::mem::size_of;
 
 use crate::{
     guid::Guid,
-    memory::{MemoryDescriptor, MemoryMap, MemoryType, PAGE_SIZE, PhysicalAddress},
+    memory::{
+        MemoryDescriptor, MemoryMap, MemoryType, NamedMemoryType, PhysicalAddress, PAGE_SIZE,
+    },
     status::{Error, Status, SUCCESS},
     Event, Handle, TableHeader,
 };
@@ -221,7 +223,11 @@ impl BootServices {
     }
 
     /// Allocates pages of a particular type.
-    pub fn allocate_pages(&self, memory_type: MemoryType, pages: usize) -> Result<*const u8, Error> {
+    pub fn allocate_pages(
+        &self,
+        memory_type: MemoryType,
+        pages: usize,
+    ) -> Result<*const u8, Error> {
         let mut address = PhysicalAddress::default();
 
         (self.AllocatePages)(0, memory_type, pages, &mut address)?;
@@ -266,7 +272,6 @@ impl BootServices {
             self.free_pages(memory_map.buffer as *const u8, memory_map.alloc_size)?;
             memory_map.buffer =
                 self.allocate_pages(memory_type, memory_map.alloc_size)? as *const MemoryDescriptor;
-
         }
 
         assert!(
@@ -309,7 +314,7 @@ impl BootServices {
     /// `memory_type` is the type of memory the caller uses for its data.
     pub fn exit_boot_services(&self, image_handle: Handle) -> Result<MemoryMap, Error> {
         // The data memory type for applications that would call exit_boot_services is assumed to always be `LoaderData`.
-        let mut memory_map = self.get_memory_map(MemoryType::LoaderData)?;
+        let mut memory_map = self.get_memory_map(NamedMemoryType::LoaderData.into())?;
 
         match self.exit_boot_services_with_map(image_handle, memory_map.key) {
             Ok(_) => Ok(()),
@@ -340,10 +345,10 @@ impl BootServices {
 
         // Boot services memory can be treated as conventional memory after calling `ExitBootServices`.
         for entry in memory_map.iter_mut() {
-            if entry.Type == MemoryType::BootServicesCode
-                || entry.Type == MemoryType::BootServicesData
+            if entry.Type == NamedMemoryType::BootServicesCode.into()
+                || entry.Type == NamedMemoryType::BootServicesData.into()
             {
-                entry.Type = MemoryType::ConventionalMemory;
+                entry.Type = NamedMemoryType::ConventionalMemory.into();
             }
         }
 
