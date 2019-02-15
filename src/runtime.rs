@@ -83,13 +83,12 @@ pub struct RuntimeServices {
         ScatterGatherList: PhysicalAddress,
     ) -> Status,
     /// Returns if the capsule can be supported via UpdateCapsule().
-    pub QueryCapsuleCapabilities:
-        extern "win64" fn(
-            CapsuleHeaderArray: *const *const CapsuleHeader,
-            CapsuleCount: usize,
-            MaximumCapsuleSize: &mut u64,
-            ResetType: &mut ResetType,
-        ) -> Status,
+    pub QueryCapsuleCapabilities: extern "win64" fn(
+        CapsuleHeaderArray: *const *const CapsuleHeader,
+        CapsuleCount: usize,
+        MaximumCapsuleSize: &mut u64,
+        ResetType: &mut ResetType,
+    ) -> Status,
     /// Returns information about the EFI variables.
     pub QueryVariableInfo: extern "win64" fn(
         Attributes: u32,

@@ -145,8 +145,6 @@ impl From<MemoryType> for NamedMemoryType {
             num @ 15...0x6fffffff => NamedMemoryType::UnknownMemoryType(num),
             num @ 0x70000000...0x7fffffff => NamedMemoryType::OEMSpecific(num - 0x70000000),
             num @ 0x80000000...0xffffffff => NamedMemoryType::OSLoaderSpecific(num - 0x80000000),
-            // Should be unreachable, but this is better than a panic in case it is reachable
-            num => NamedMemoryType::UnknownMemoryType(num),
         }
     }
 }

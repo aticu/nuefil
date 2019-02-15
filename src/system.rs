@@ -75,5 +75,6 @@ impl SystemTable {
 // All the Rust code should ever get is an immutable reference and therefore
 // access to the data is safe from many threads, assuming correct implementation
 // by the firmware.
-unsafe impl Send for SystemTable {}
+// TODO: Make this something like `volatile::ReadOnly<SystemTable>`, since the firmware might
+// change that table, even though Rust code cannot.
 unsafe impl Sync for SystemTable {}

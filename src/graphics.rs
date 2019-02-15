@@ -150,9 +150,12 @@ pub struct GraphicsOutputMode {
 pub struct GraphicsOutput {
     /// Returns information for an available graphics mode that the graphics
     /// device and the set of active video output devices supports.
-    pub QueryMode:
-        extern "win64" fn(&mut GraphicsOutput, u32, &mut usize, &mut *mut GraphicsOutputModeInfo)
-            -> Status,
+    pub QueryMode: extern "win64" fn(
+        &mut GraphicsOutput,
+        u32,
+        &mut usize,
+        &mut *mut GraphicsOutputModeInfo,
+    ) -> Status,
     /// Set the video device into the specified mode and clears the visible portions of the output display to black.
     pub SetMode: extern "win64" fn(&mut GraphicsOutput, u32) -> Status,
     /// Software abstraction to draw on the video device’s frame buffer.

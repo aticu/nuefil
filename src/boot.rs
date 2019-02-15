@@ -7,7 +7,8 @@
 use core::mem::size_of;
 
 use crate::{
-    guid::Guid,
+    guid::{Guid, LOADED_IMAGE_PROTOCOL_GUID},
+    loaded_image::LoadedImage,
     memory::{
         MemoryDescriptor, MemoryMap, MemoryType, NamedMemoryType, PhysicalAddress, PAGE_SIZE,
     },
@@ -132,9 +133,11 @@ pub struct BootServices {
         ImageHandle: &mut Handle,
     ) -> Status,
     /// Transfers control to a loaded image’s entry point.
-    StartImage:
-        extern "win64" fn(ImageHandle: Handle, ExitDataSize: &mut usize, ExitData: &mut *mut u16)
-            -> Status,
+    StartImage: extern "win64" fn(
+        ImageHandle: Handle,
+        ExitDataSize: &mut usize,
+        ExitData: &mut *mut u16,
+    ) -> Status,
     /// Exits the image’s entry point.
     Exit: extern "win64" fn(
         ImageHandle: Handle,
@@ -163,7 +166,14 @@ pub struct BootServices {
     /// Informs a set of drivers to stop managing a controller.
     DisconnectController: extern "win64" fn(),
     /// Adds elements to the list of agents consuming a protocol interface.
-    OpenProtocol: extern "win64" fn(),
+    OpenProtocol: extern "win64" fn(
+        Handle: Handle,
+        Protocol: &Guid,
+        Interface: &mut usize,
+        AgentHandle: Handle,
+        ControllerHandle: Handle,
+        Attributes: u32,
+    ) -> Status,
     /// Removes elements from the list of agents consuming a protocol
     /// interface.
     CloseProtocol: extern "win64" fn(),
@@ -172,9 +182,11 @@ pub struct BootServices {
     OpenProtocolInformation: extern "win64" fn(),
     /// Retrieves the list of protocols installed on a handle. The return
     /// buffer is automatically allocated.
-    ProtocolsPerHandle:
-        extern "win64" fn(Handle: Handle, ProtocolBuffer: *mut Guid, ProtocolBufferCount: usize)
-            -> Status,
+    ProtocolsPerHandle: extern "win64" fn(
+        Handle: Handle,
+        ProtocolBuffer: *mut Guid,
+        ProtocolBufferCount: usize,
+    ) -> Status,
     /// Retrieves the list of handles from the handle database that meet
     /// the search criteria. The return buffer is automatically allocated.
     LocateHandleBuffer: extern "win64" fn(
@@ -310,11 +322,17 @@ impl BootServices {
     }
 
     /// Terminates boot services returning the memory map.
-    ///
-    /// `memory_type` is the type of memory the caller uses for its data.
     pub fn exit_boot_services(&self, image_handle: Handle) -> Result<MemoryMap, Error> {
-        // The data memory type for applications that would call exit_boot_services is assumed to always be `LoaderData`.
-        let mut memory_map = self.get_memory_map(NamedMemoryType::LoaderData.into())?;
+        let image_data = self.get_loaded_image_data(image_handle);
+
+        let memory_type = if let Ok(image_data) = image_data {
+            image_data.ImageDataType
+        } else {
+            // The data memory type for applications that would call exit_boot_services is assumed to always be `LoaderData`, if it cannot be determined.
+            NamedMemoryType::LoaderData.into()
+        };
+
+        let mut memory_map = self.get_memory_map(memory_type)?;
 
         match self.exit_boot_services_with_map(image_handle, memory_map.key) {
             Ok(_) => Ok(()),
@@ -337,7 +355,7 @@ impl BootServices {
                     .exit_boot_services_with_map(image_handle, memory_map.key)
                     .is_ok()
                 {
-                    // If the call succeeded, try again.
+                    // If the call succeeded, we're done.
                     break Ok(());
                 }
             },
@@ -353,5 +371,34 @@ impl BootServices {
         }
 
         Ok(memory_map)
+    }
+
+    /// Queries the UEFI firmware for information about a loaded image.
+    pub fn get_loaded_image_data(&self, image_handle: Handle) -> Result<&LoadedImage, Error> {
+        static PROTOCOL: Guid = LOADED_IMAGE_PROTOCOL_GUID;
+
+        let mut result = 0;
+        // Get exlusive access
+        let attributes = 0x20;
+
+        (self.OpenProtocol)(
+            image_handle,
+            &PROTOCOL,
+            &mut result,
+            image_handle,
+            Handle(0),
+            attributes,
+        )?;
+
+        if result == 0 {
+            // If the result isn't what we expect, there's probably a bug somewhere
+            // which makes unsupported the most fitting error code
+            Err(Error::Unsupported)
+        } else {
+            // This is safe under the assumption, that the Firmware returned a valid pointer.
+            let loaded_image = unsafe { &*(result as *const LoadedImage) };
+
+            Ok(loaded_image)
+        }
     }
 }

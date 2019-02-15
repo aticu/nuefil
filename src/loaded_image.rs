@@ -1,6 +1,7 @@
 //! Can be used on any image handle to obtain information about the loaded image.
 
 use crate::{memory::MemoryType, status::Status, system::SystemTable, Handle};
+use core::fmt;
 
 /// Each loaded image has an image handle that supports EFI_LOADED_IMAGE_PROTOCOL. When an
 /// image is started, it is passed the image handle for itself. The image can use the handle to obtain its
@@ -37,4 +38,22 @@ pub struct LoadedImage {
     pub ImageDataType: MemoryType,
     /// Function that unloads the image.
     pub Unload: extern "win64" fn(ImageHandle: Handle) -> Status,
+}
+
+impl fmt::Debug for LoadedImage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("LoadedImage")
+            .field("Revision", &self.Revision)
+            .field("ParentHandle", &self.ParentHandle)
+            .field("DeviceHandle", &self.DeviceHandle)
+            .field("FilePath", &self.FilePath)
+            .field("Reserved", &self.Reserved)
+            .field("LoadOptionsSize", &self.LoadOptionsSize)
+            .field("LoadOptions", &self.LoadOptions)
+            .field("ImageBase", &self.ImageBase)
+            .field("ImageSize", &self.ImageSize)
+            .field("ImageCodeType", &self.ImageCodeType)
+            .field("ImageDataType", &self.ImageDataType)
+            .finish()
+    }
 }

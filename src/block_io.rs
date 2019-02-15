@@ -58,13 +58,21 @@ pub struct BlockIo {
     /// Resets the block device hardware.
     pub Reset: extern "win64" fn(&BlockIo, ExtendedVerification: bool) -> Status,
     /// Reads the requested number of blocks from the device.
-    pub ReadBlocks:
-        extern "win64" fn(&BlockIo, MediaId: u32, LBA: u64, BufferSize: usize, Buffer: *mut u8)
-            -> Status,
+    pub ReadBlocks: extern "win64" fn(
+        &BlockIo,
+        MediaId: u32,
+        LBA: u64,
+        BufferSize: usize,
+        Buffer: *mut u8,
+    ) -> Status,
     /// Writes the requested number of blocks to the device.
-    pub WriteBlocks:
-        extern "win64" fn(&BlockIo, MediaId: u32, LBA: u64, BufferSize: usize, Buffer: *const u8)
-            -> Status,
+    pub WriteBlocks: extern "win64" fn(
+        &BlockIo,
+        MediaId: u32,
+        LBA: u64,
+        BufferSize: usize,
+        Buffer: *const u8,
+    ) -> Status,
     /// Flushes any cache blocks. This function is optional and only
     /// needs to be supported on block devices that cache writes.
     pub FlushBlocks: extern "win64" fn(&BlockIo) -> Status,
